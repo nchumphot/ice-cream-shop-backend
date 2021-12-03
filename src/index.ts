@@ -39,23 +39,28 @@ client.connect().then(() => {
   });
 
   // Update quantity of a single flavour
-  app.put("/inventory/:flavour_id/sales", async (req, res) => {
-    const { quantitySold } = req.body;
-    const flavourID = parseInt(req.params.flavour_id);
+  app.put("/inventory/sales", async (req, res) => {
+    const { flavour, quantitySold } = req.body;
+    // Check the amount in stock
     const amountInStock: number = await client
-      .query("SELECT quantity FROM inventory WHERE id = $1", [flavourID])
+      .query(
+        "SELECT quantity FROM inventory WHERE id = (SELECT id FROM flavours WHERE name = $1)",
+        [flavour]
+      )
       .then((res) => res.rows[0].quantity);
+    // If there is NOT enough ice cream
     if (quantitySold > amountInStock) {
       res.status(403).json({
         status: "failed",
         message: "Cannot buy more ice cream than the quantity in stock.",
       });
+      // If there is enough ice cream
     } else {
+      const amountLeft = amountInStock - parseInt(quantitySold);
       const result = await client.query(
-        `UPDATE inventory SET quantity = ${amountInStock}-$1 WHERE id = $2 RETURNING *`,
-        [quantitySold, flavourID]
+        "UPDATE inventory SET quantity = ($1) WHERE id = (SELECT id FROM flavours WHERE name = ($2)) RETURNING *",
+        [amountLeft, flavour]
       );
-
       res.status(200).json({
         status: "success",
         data: result.rows,
@@ -66,30 +71,24 @@ client.connect().then(() => {
   // Adding a flavour to inventory with a specifed amount
   app.post("/inventory/add", async (req, res) => {
     const { flavour, quantityAdded } = req.body;
+    // List all the existing flavours
     const existingFlavours = await client
       .query("SELECT name FROM flavours;")
       .then((res) => res.rows);
     console.log(existingFlavours);
     const flavourArr = existingFlavours.map((item) => item.name.toLowerCase());
     console.log(flavourArr);
+    // If the flavour already exists
     if (flavourArr.includes(flavour)) {
-      const amountInStock: number = await client
-        .query(
-          "SELECT quantity FROM inventory WHERE id = (SELECT id FROM flavours WHERE name = ($1));",
-          [flavour]
-        )
-        .then((res) => res.rows[0].quantity);
-      console.log(amountInStock);
       const result = await client.query(
-        `UPDATE inventory SET quantity = ${amountInStock}+${parseInt(
-          quantityAdded
-        )} WHERE id = (SELECT id FROM flavours WHERE name = ($1)) RETURNING *;`,
-        [flavour]
+        `UPDATE inventory SET quantity = (SELECT quantity FROM inventory WHERE id = (SELECT id FROM flavours WHERE name = ($1)))+($2) WHERE id = (SELECT id FROM flavours WHERE name = ($1)) RETURNING *;`,
+        [flavour, parseInt(quantityAdded)]
       );
       res.status(200).json({
         status: "success",
         data: result.rows,
       });
+      // Add a new flavour (in lowercase) if it doesn't already exist
     } else {
       const result = await client
         .query("INSERT INTO flavours (name) VALUES ($1)", [
