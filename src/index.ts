@@ -38,32 +38,42 @@ client.connect().then(() => {
     }
   });
 
-  // Update quantity of a single flavour
+  // Decrease quantity of a single flavour to a minimum of zero
   app.put("/inventory/sales", async (req, res) => {
-    const { flavour, quantitySold } = req.body;
-    // Check the amount in stock
-    const amountInStock: number = await client
-      .query(
-        "SELECT quantity FROM inventory WHERE id = (SELECT id FROM flavours WHERE name = $1)",
-        [flavour]
-      )
-      .then((res) => res.rows[0].quantity);
-    // If there is NOT enough ice cream
-    if (quantitySold > amountInStock) {
+    const { flavour, quantity } = req.body;
+    const existingFlavours = await client
+      .query("SELECT name FROM flavours;")
+      .then((res) => res.rows);
+    if (existingFlavours.includes(flavour)) {
+      // Check the amount in stock
+      const amountInStock: number = await client
+        .query(
+          "SELECT quantity FROM inventory WHERE id = (SELECT id FROM flavours WHERE name = $1)",
+          [flavour]
+        )
+        .then((res) => res.rows[0].quantity);
+      // If there is NOT enough ice cream
+      if (quantity > amountInStock) {
+        res.status(403).json({
+          status: "failed",
+          message: "Cannot buy more ice cream than the quantity in stock.",
+        });
+        // If there is enough ice cream
+      } else {
+        const amountLeft = amountInStock - parseInt(quantity);
+        const result = await client.query(
+          "UPDATE inventory SET quantity = ($1) WHERE id = (SELECT id FROM flavours WHERE name = ($2)) RETURNING *",
+          [amountLeft, flavour]
+        );
+        res.status(200).json({
+          status: "success",
+          data: result.rows,
+        });
+      }
+    } else {
       res.status(403).json({
         status: "failed",
-        message: "Cannot buy more ice cream than the quantity in stock.",
-      });
-      // If there is enough ice cream
-    } else {
-      const amountLeft = amountInStock - parseInt(quantitySold);
-      const result = await client.query(
-        "UPDATE inventory SET quantity = ($1) WHERE id = (SELECT id FROM flavours WHERE name = ($2)) RETURNING *",
-        [amountLeft, flavour]
-      );
-      res.status(200).json({
-        status: "success",
-        data: result.rows,
+        message: "There is no such flavour.",
       });
     }
   });
