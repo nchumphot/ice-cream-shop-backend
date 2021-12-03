@@ -1,6 +1,7 @@
 import express from "express";
 import cors from "cors";
 import client from "./db";
+import filePath from "./filePath";
 
 const app = express();
 
@@ -9,11 +10,10 @@ client.connect().then(() => {
   app.use(express.json());
   app.use(cors());
 
-  app.get("/", async (req, res) => {
-    res.status(200).json({
-      status: "success",
-      message: "There is nothing on the home page. Try going to /inventory.",
-    });
+  app.get("/", (req, res) => {
+    const pathToFile = filePath("../public/index.html");
+    console.log(pathToFile);
+    res.sendFile(pathToFile);
   });
 
   app.get("/inventory", async (req, res) => {
