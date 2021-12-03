@@ -9,6 +9,13 @@ client.connect().then(() => {
   app.use(express.json());
   app.use(cors());
 
+  app.get("/", async (req, res) => {
+    res.status(200).json({
+      status: "success",
+      message: "There is nothing on the home page. Try going to /inventory.",
+    });
+  });
+
   app.get("/inventory", async (req, res) => {
     const result = await client.query(
       "SELECT * FROM flavours LEFT JOIN inventory ON flavours.id = inventory.id"
@@ -80,7 +87,7 @@ client.connect().then(() => {
 
   // Adding a flavour to inventory with a specifed amount
   app.post("/inventory/add", async (req, res) => {
-    const { flavour, quantityAdded } = req.body;
+    const { flavour, quantity } = req.body;
     // List all the existing flavours
     const existingFlavours = await client
       .query("SELECT name FROM flavours;")
@@ -92,7 +99,7 @@ client.connect().then(() => {
     if (flavourArr.includes(flavour)) {
       const result = await client.query(
         `UPDATE inventory SET quantity = (SELECT quantity FROM inventory WHERE id = (SELECT id FROM flavours WHERE name = ($1)))+($2) WHERE id = (SELECT id FROM flavours WHERE name = ($1)) RETURNING *;`,
-        [flavour, parseInt(quantityAdded)]
+        [flavour, parseInt(quantity)]
       );
       res.status(200).json({
         status: "success",
@@ -107,7 +114,7 @@ client.connect().then(() => {
         .then(() =>
           client.query(
             "INSERT INTO inventory (id, quantity) VALUES ((SELECT id FROM flavours WHERE name = ($1)), ($2)) RETURNING *",
-            [flavour.toLowerCase(), quantityAdded]
+            [flavour.toLowerCase(), quantity]
           )
         );
       res.status(201).json({
